@@ -1,5 +1,6 @@
 library(leaflet)
 library(twitteR)
+library(ggmap)
 tokendf = read.csv("/home/zach/Documents/geo-tweet-token.txt",row.names=1,as.is=TRUE)
 # OAuth authentication
 consumer_key <- tokendf["Consumer Key (API Key)",]

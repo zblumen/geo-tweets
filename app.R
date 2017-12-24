@@ -1,44 +1,51 @@
-library(leaflet)
-library(twitteR)
 ui = fluidPage(
+  #Some javascript dtuff so we can press enter for an update
+  tags$script(
+    '$(document).on("keyup", function(e) {
+        if(e.keyCode == 13){
+            Shiny.onInputChange("keyPressed", Math.random());
+        }
+      });'
+  ),
     fluidRow(
-      column(4, textInput("searchkw", label = "search:", value = "#dinner")),
-      column(4, textInput("lat", label = "latitude:", value = 40.75)),
-      column(4, textInput("long", label = "longitude:", value = -74)) 
+      column(3, textInput("searchkw", label = "search:", value = "#dinner")),
+      column(3, textInput("loc", label = "Location:", value = "Washington DC")),
+      column(3, textInput("rad", label = "Radius (Mi):", value = "6")),
+      #column(3, textInput("lat", label = "latitude:", value = 40.75)),
+      #column(3, textInput("long", label = "longitude:", value = -74)),
+      column(3, style = "margin-top: 25px;", actionButton("search_button", label = "search Twitter!", value = "#dinner"))
     ),
     fluidRow(leafletOutput("myMap")),
     fluidRow(tableOutput("table"))       
-    # column(8, leafletOutput("myMap")),
-    # column(12, tableOutput('table'))
 )
 server = function(input, output) {
-  # Issue search query to Twitter
-  tokendf = read.csv("/home/zach/Documents/geo-tweet-token.txt",row.names=1,as.is=TRUE)
-  # OAuth authentication
-  consumer_key <- tokendf["Consumer Key (API Key)",]
-  consumer_secret <- tokendf["Consumer Secret (API Secret)",]
-  access_token <- tokendf["Access Token",]
-  access_secret <- tokendf["Access Token Secret",]
-  options(httr_oauth_cache = TRUE) # enable using a local file to cache OAuth access credentials between R sessions
-  setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
-  dataInput <- reactive({  
-    tweets <- twListToDF(searchTwitter(input$searchkw, n = 100, 
-                                       geocode = paste0(input$lat, ",", input$long, ",100km"))) 
+  # google_loc = eventReactive(c(input$keyPressed,input$search_button),{
+  #   geocode(input$loc,output = "latlona",source="google")
+  # })
+  dataInput <- eventReactive(c(input$keyPressed,input$search_button),{#reactive({ 
+    google_loc = geocode(input$loc,output = "latlona",source="google")
+    validate(need(!is.na(google_loc$lon),"Please enter a different location.  Cannot geo-locate"))
+    radius  = gsub("[^(0-9)|\\.]",'',input$rad) %>% as.numeric()
+    validate(need(!is.na(radius) & radius > 0,"Please enter a valide number for radius in miles"))    
+    tweets <- twListToDF(searchTwitter(input$searchkw, n = 1000
+                         ,geocode = paste0(google_loc$lat, ",", google_loc$lon, ",",radius,"mi"))) 
     tweets$created <- as.character(tweets$created)
     tweets <- tweets[!is.na(tweets[, "longitude"]), ]
+    list(tweets=tweets,center = google_loc)
   })
   
   # Create a reactive leaflet map
   mapTweets <- reactive({
     map = leaflet() %>% addTiles() %>%
-      addMarkers(as.numeric(dataInput()$longitude), as.numeric(dataInput()$latitude), popup = dataInput()$screenName) %>%
-      setView(input$long, input$lat, zoom = 11)
+      addMarkers(as.numeric(dataInput()$tweets$longitude), as.numeric(dataInput()$tweets$latitude), 
+      popup = dataInput()$tweets$screenName) %>%
+      setView(dataInput()$center$lon, dataInput()$center$lat, zoom = 10)
   })
   output$myMap = renderLeaflet({mapTweets()})
   
   # Create a reactive table 
   output$table <- renderTable(
-    {dataInput()[, c("screenName", "longitude", "latitude", "created")]}
+    {dataInput()$tweets[, c("screenName", "longitude", "latitude", "created")]}
   )
 }
 

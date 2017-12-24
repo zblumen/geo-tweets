@@ -18,3 +18,5 @@ map = leaflet() %>% addTiles() %>%
   addMarkers(as.numeric(tweets$longitude), as.numeric(tweets$latitude), popup = tweets$screenName) %>%
   setView(40.75, -74, zoom = 11)
 
+google_loc = geocode("test string that should return nothing",output = "latlona",source="google")
+
